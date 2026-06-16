@@ -1,109 +1,156 @@
 # BTC Perp Trading Console
 
-A local, single-operator console that trades **Kalshi BTCPERP perpetual futures
-autonomously and live** using your production Kalshi margin account. Opus
-(`claude-opus-4-8`) — or a deterministic quant strategy when no LLM key is set —
-makes profit-focused decisions hour-by-hour and submits real orders at up to
-**5.8x** leverage with no per-order confirmation once you arm live trading.
+A local operator console for researching and running autonomous Kalshi
+BTCPERP perpetual-futures strategies. The app combines a FastAPI backend, a
+browser-based trading console, live Kalshi margin-account telemetry,
+deterministic strategy engines, ecological market-state diagnostics, tuning,
+backtesting, and optional LLM-assisted review.
 
-> ⚠️ **This places real orders with real money at leverage.** Read "Safety model"
-> below. The author of this tool is not responsible for trading losses.
+> Warning: this project can place real orders with real money at leverage when
+> live trading is armed. It is experimental trading software, not financial
+> advice. Use demo mode first, understand the code, and accept that leveraged
+> trading can lose capital quickly.
 
----
+## Running Agent
 
-## Quick start
+Screenshots below are from a running local console. Account balance and P&L
+panels are intentionally kept out of frame.
 
-1. Put your Kalshi credentials in `trading_API_keys.txt` (already present):
-   line 1 = API key id (UUID), then the RSA private key PEM block.
-2. (Optional, for Opus decisions) set your Anthropic key:
+![Control panel](docs/screenshots/control-panel.png)
+
+![Agent telemetry](docs/screenshots/agent-telemetry.png)
+
+## What It Does
+
+- Connects to Kalshi BTCPERP margin/perps endpoints with signed REST requests.
+- Maintains a live local dashboard for account state, market state, strategy
+  decisions, risk checks, fills, logs, tuning, and LLM usage.
+- Aggregates Kalshi 1m candles into local 2m, 3m, 5m, and 15m timeframes.
+- Runs deterministic strategy variants including robust MPC, cost-aware MPC,
+  mean reversion, trend, breakout, momentum, and blended alpha components.
+- Includes ecology-inspired diagnostics such as the Trophic Information
+  Forager, CSD governor, fast guard, forager harvest/cooldown, and autotomy
+  loss-shedding layers.
+- Supports backtesting, parameter sweeps, and live setting persistence through
+  local JSON state.
+- Can call an Anthropic model for optional review workflows when an API key is
+  configured.
+
+## Quick Start
+
+1. Install Python 3.11+ on Windows.
+
+2. Create a local Kalshi credential file named `trading_API_keys.txt` in the
+   project root. The file is ignored by git.
+
+   ```text
+   <kalshi-api-key-id>
+   -----BEGIN RSA PRIVATE KEY-----
+   ...
+   -----END RSA PRIVATE KEY-----
+   ```
+
+3. Optionally set an Anthropic key for LLM-assisted review.
+
    ```powershell
    $env:ANTHROPIC_API_KEY = "sk-ant-..."
    ```
-3. Launch:
+
+4. Launch the console.
+
    ```powershell
    .\run.ps1
    ```
-4. Open <http://127.0.0.1:8787>.
 
-## Operating it (the flow you asked for)
+5. Open <http://127.0.0.1:8787>.
 
-1. Open the UI → it auto-connects to Kalshi **production**.
-2. Product is **BTC Perp**; set **Timeframe = 15m**; leverage shows **5.8x**.
-3. Tick **Use Actual Account Balance**, **Let Opus Decide**, **Auto-Submit Orders**.
-4. Click **⚡ Enable Live Autonomous Trading** (you confirm this **once**).
-5. Click **▶ Start Hourly Live Trading Loop** — the bot now trades by itself.
-6. Stop anytime with **⏸ Stop Trading**, or **⛔ Kill Switch** (halts + disarms +
-   cancels resting orders).
+## Recommended First Run
 
-Every other button is live too: **Run One Live Decision Now**, **Backtest**,
-**Tune Strategy** (auto-applies best params to the live loop), **Save Settings**.
+Start in `demo` mode before using production credentials. Demo mode is the
+right place to verify signing, endpoint compatibility, ticker configuration,
+order plumbing, and UI behavior without risking production capital.
 
-## How decisions are made
+To switch environments, use the Control Panel in the UI or edit
+`state/settings.json` after the first launch.
 
-Each cycle: fetch real balance/positions/orders → fetch BTCPERP orderbook +
-candles → compute trend/momentum/mean-reversion/regime/ATR/RSI → deterministic
-strategy forms a proposal → (optional) Opus reviews the full context and picks
-the most profitable action → size from real equity × leverage → run risk checks →
-submit/cancel/replace/reduce/close as needed.
+## Safety Model
 
-**15m candles:** Kalshi's candlestick API only serves 1m/1h/1d, so the app pulls
-1m candles and **aggregates them into 5m/15m locally**. The 15m timeframe is used
-in live trading, backtest, and tuning alike.
+Live trading requires a one-time arm action in the UI. After it is armed, the
+loop can place orders without per-order confirmation until stopped or killed.
 
-## Safety model (read this)
+Guardrails live in `backend/config.py` and persisted settings. Important
+controls include:
 
-You asked for "approve once, then trade." That is exactly what this does — there
-is **no per-order confirmation, no tickets, no confirm phrases.** What remains:
+- `max_leverage`
+- `max_position_notional_usd`
+- `daily_loss_limit_*`
+- `min_liquidation_buffer_pct`
+- `min_account_equity_usd`
+- kill switch and live-arm state
 
-- **One-time arm** (`Enable Live Autonomous Trading`) + **Kill Switch**.
-- A few **automatic, non-prompting guardrails** that protect capital from a
-  runaway bug (a bug at 5.8x can liquidate an account in minutes — that destroys
-  profit, which is the opposite of your goal). All are in `backend/config.py`
-  and adjustable, including **off**:
-  - `max_leverage` (hard cap, 5.8x)
-  - `max_position_notional_usd` (0 = equity × leverage)
-  - `daily_loss_limit_*` circuit breaker (default 25% of day-start equity)
-  - `min_liquidation_buffer_pct` / liquidation-risk block
-  - `min_account_equity_usd`
-- Everything else (spread, volatility, funding, …) is **warn-only** and never
-  blocks a trade, per your preference for prioritizing profit.
+The application is intentionally local-first. Secrets, runtime state, logs,
+keys, Python caches, virtual environments, and local agent config directories
+are excluded by `.gitignore`.
 
-## Strongly recommended first run
+## How Decisions Are Made
 
-Set `environment` to `demo` in the Control Panel (or `state/settings.json`) and
-do one **demo** session first to confirm signing, tickers, and order plumbing
-against your account before going to production. The exact BTCPERP ticker and the
-REST signing string are validated by the **Connect** button (it calls
-`/margin/balance`). If Connect fails, see "Troubleshooting".
+Each live cycle gathers the current account, positions, resting orders,
+BTCPERP order book, candles, derived indicators, market regime, ecology state,
+and risk context. Strategy modules produce a target action and sizing proposal.
+Risk checks and execution rules then decide whether to hold, post, cross,
+reduce, close, or stop.
+
+The strategy path is deterministic by default. LLM review is optional and is
+used only when an API key and relevant settings are enabled.
+
+## Project Layout
+
+```text
+backend/
+  app.py             FastAPI app, static UI serving, and API endpoints
+  kalshi_client.py   Signed Kalshi REST client
+  config.py          Settings, credential loading, and guardrail defaults
+  store.py           Local state, logs, snapshots, and P&L history
+  engine.py          Live trading cycle and background loop
+  executor.py        Order submission, cancellation, and replacement
+  risk.py            Position sizing and guardrail checks
+  market_data.py     Candles, order book metrics, and aggregation
+  indicators.py      EMA, RSI, ROC, ATR, volatility helpers
+  signals.py         Strategy signal construction
+  strategy.py        Deterministic strategy proposals
+  tuning.py          Parameter search and auto-apply support
+  backtest.py        Historical evaluation
+  ecology.py         Trophic information network diagnostics
+  csd.py             Critical-slowing-down risk governor
+  forager.py         Profit harvest and refractory cooldown logic
+  autotomy.py        Toxic-loss exit layer
+  visual_review.py   Optional visual-review workflow
+
+static/
+  index.html         Main operator console
+  app.js             UI state management and rendering
+  styles.css         Dashboard styling
+  watch.html         Watch view
+
+docs/screenshots/   Running-console screenshots for documentation
+```
 
 ## Troubleshooting
 
-- **Connect fails / 401:** the REST signing message is
-  `timestamp_ms + METHOD + /trade-api/v2<path>`. If Kalshi rejects it, adjust
-  `_sign`/`_request` in `backend/kalshi_client.py` (path prefix is the usual
-  culprit).
-- **Empty market data / wrong ticker:** confirm the live ticker via
-  `GET /margin/markets`; set it in the Control Panel product field / settings.
-- **Opus not used:** set `ANTHROPIC_API_KEY`; otherwise the deterministic
-  strategy drives the loop (still fully autonomous).
+- `Connect` returns `401`: check the Kalshi signing string in
+  `backend/kalshi_client.py`. The expected form is
+  `timestamp_ms + METHOD + /trade-api/v2<path>`.
+- Market data is empty: confirm the live ticker with Kalshi and update the
+  product/ticker setting.
+- LLM review does not run: set `ANTHROPIC_API_KEY` and enable the relevant UI
+  settings.
+- The UI shows stale state: stop the server, inspect local files in `state/`,
+  and restart with `.\run.ps1`.
 
-## Files
+## Maintainer Notes
 
-```
-backend/
-  config.py          credentials + persisted settings + guardrail defaults
-  kalshi_client.py   signed REST client for the margin/perps API
-  market_data.py     candles (1m->5m/15m), indicators, orderbook metrics
-  indicators.py      EMA / RSI / ROC / ATR / stdev
-  account.py         real margin-account view
-  strategy.py        deterministic quant proposal (tunable params)
-  decision_engine.py Opus review + strategy fallback
-  risk.py            sizing + checks (block vs warn)
-  executor.py        submits/cancels real orders
-  engine.py          the autonomous cycle + background loop
-  tuning.py          param search -> auto-applies to live
-  backtest.py        historical evaluation of the live strategy
-  store.py           persisted state + logs
-  app.py             FastAPI: serves UI + all endpoints
-static/              the console UI (index.html, styles.css, app.js)
-```
+This repository is maintained as a public research and operator-console project
+for autonomous market-agent experimentation. Contributions should preserve the
+local-first secret model and treat live-trading behavior as high-risk code:
+small changes in sizing, execution, or guardrails can have real financial
+impact.
