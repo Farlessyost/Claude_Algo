@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>BTC Perp Trading Console</title>
+<link rel="stylesheet" href="/static/styles.css?v=11" />
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">₿</span>
+    <div>
+      <div class="app-name">BTC Perp Trading Console</div>
+      <div class="sub">Kalshi BTCPERP · autonomous live trading</div>
+    </div>
+  </div>
+  <div class="status-cluster">
+    <div class="stat"><label>Connection</label><span id="hdr-conn" class="pill">—</span></div>
+    <div class="stat"><label>Environment</label><span id="hdr-env" class="pill prod">production</span></div>
+    <div class="stat"><label>Mode</label><span id="hdr-mode" class="pill">—</span></div>
+    <div class="stat"><label>Live Autonomous</label><span id="hdr-live" class="pill">OFF</span></div>
+    <div class="stat"><label>Kill Switch</label><span id="hdr-kill" class="pill">clear</span></div>
+    <div class="stat"><label>Loop Cycle</label><span id="hdr-cycle" class="pill mono" title="Vol-aware loop interval. Shrinks when ATR% spikes, grows when quiet.">—</span></div>
+    <div class="stat"><label>Last Refresh</label><span id="hdr-refresh" class="mono">—</span></div>
+  </div>
+</header>
+
+<main class="grid">
+  <!-- CONTROL PANEL -->
+  <section class="card span2">
+    <h2>Control Panel</h2>
+    <div class="controls">
+      <div class="field"><label>Product</label>
+        <select id="sel-product"><option value="KXBTCPERP">BTC Perp (KXBTCPERP)</option></select></div>
+      <div class="field"><label>Timeframe</label>
+        <select id="sel-timeframe">
+          <option value="1m">1m</option><option value="2m">2m</option>
+          <option value="3m">3m</option><option value="5m" selected>5m</option>
+          <option value="15m">15m</option><option value="1h">1h</option>
+        </select></div>
+      <div class="field"><label>Leverage</label>
+        <input id="inp-leverage" type="number" step="0.1" value="5.8" /></div>
+      <div class="field"><label>Strategy</label>
+        <select id="sel-strategy">
+          <option value="robust_mpc" selected>Robust MPC (main)</option>
+          <option value="mpc">Legacy Cost-Aware MPC</option>
+          <option value="mr_edge">MR Edge</option>
+          <option value="regime">Regime</option>
+          <option value="meanrev">Mean Reversion</option>
+          <option value="trend">Trend</option>
+          <option value="breakout">Breakout</option>
+          <option value="momentum">Momentum</option>
+        </select></div>
+      <div class="field"><label>Model</label>
+        <select id="sel-model"><option value="claude-opus-4-8">Opus 4.8</option></select></div>
+      <div class="field"><label>Mode</label>
+        <select id="sel-mode">
+          <option value="live_autonomous" selected>Live Autonomous</option>
+          <option value="dry_run">Dry Run</option>
+        </select></div>
+    </div>
+
+    <div class="checks">
+      <label><input type="checkbox" id="chk-balance" /> Use Actual Account Balance</label>
+      <label><input type="checkbox" id="chk-live" /> Allow Live Orders</label>
+      <label><input type="checkbox" id="chk-opus" /> Let Opus Decide</label>
+      <label><input type="checkbox" id="chk-auto" /> Auto-Submit Orders</label>
+      <label><input type="checkbox" id="chk-noask" /> Do Not Ask Again</label>
+      <label><input type="checkbox" id="chk-trust" /> Trust This Strategy</label>
+    </div>
+
+    <div class="agg-row">
+      <div class="agg-label">Trade Aggressiveness</div>
+      <div class="agg-btns" role="radiogroup" aria-label="Trade Aggressiveness">
+        <button class="agg" data-level="conservative" role="radio" aria-pressed="false"
+                title="Validated edge — pure maker, wide deadband. Opus 4.8 risk overlay.">
+          <span class="agg-dot"></span><span class="agg-name">Conservative</span>
+          <span class="agg-meta">k=∅ · band 0.5 · Opus</span>
+        </button>
+        <button class="agg" data-level="moderate" role="radio" aria-pressed="false"
+                title="Tighter MPC band + lower deadband. Still maker-only. Opus 4.8.">
+          <span class="agg-dot"></span><span class="agg-name">Moderate</span>
+          <span class="agg-meta">k=∅ · band 0.3 · Opus</span>
+        </button>
+        <button class="agg" data-level="aggressive" role="radio" aria-pressed="false"
+                title="Crosses the spread on high-urgency cycles. Sonnet 4.6 risk overlay (~5x cheaper than Opus for the high call volume).">
+          <span class="agg-dot"></span><span class="agg-name">Aggressive</span>
+          <span class="agg-meta">k=0.5 · band 0.15 · Sonnet</span>
+        </button>
+        <button class="agg" data-level="ultra" role="radio" aria-pressed="false"
+                title="Takes the maker baseline off entirely. Crosses on nearly any signal (k=0.05), crosses on the first reprice, and force-crosses when recent move exceeds 8bps. Higher cost, fewer missed trades.">
+          <span class="agg-dot"></span><span class="agg-name">Ultra</span>
+          <span class="agg-meta">k=0.05 · chase=0 · move&gt;8bps</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="agg-row" data-row="size">
+      <div class="agg-label">Position Utilization</div>
+      <div class="agg-btns" role="radiogroup" aria-label="Position Utilization">
+        <button class="size" data-level="light" role="radio" aria-pressed="false"
+                title="Trade smaller fraction of buying power. MPC target_fraction × 0.5 — positions rarely approach the leverage cap, more capital stays idle.">
+          <span class="agg-dot"></span><span class="agg-name">Light</span>
+          <span class="agg-meta">0.5× sizing · idle cash</span>
+        </button>
+        <button class="size" data-level="standard" role="radio" aria-pressed="false"
+                title="Default sizing — uses whatever fraction the MPC controller asks for, capped at 5.8x leverage.">
+          <span class="agg-dot"></span><span class="agg-name">Standard</span>
+          <span class="agg-meta">1.0× sizing · MPC default</span>
+        </button>
+        <button class="size" data-level="heavy" role="radio" aria-pressed="false"
+                title="Push toward fuller account utilization. MPC target_fraction × 2.0 — positions approach the 5.8x leverage cap far more often. Cap still hard-clamps, so this cannot exceed it.">
+          <span class="agg-dot"></span><span class="agg-name">Heavy</span>
+          <span class="agg-meta">2.0× sizing · near cap</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <button id="btn-enable" class="primary big">⚡ Enable Live Autonomous Trading</button>
+      <div class="run-group" title="Continuous = no time limit, runs until you press Stop or Kill. Bounded = auto-stops after the selected duration.">
+        <button id="btn-startloop" class="go">▶ Start Continuous Trading</button>
+        <select id="sel-loop-duration" class="run-duration" aria-label="Loop duration">
+          <option value="" selected>Continuous (no limit)</option>
+          <option value="60">Run 1 hour</option>
+          <option value="240">Run 4 hours</option>
+          <option value="720">Run 12 hours</option>
+          <option value="1440">Run 24 hours</option>
+          <option value="2880">Run 48 hours</option>
+        </select>
+      </div>
+      <button id="btn-stop" class="warn">⏸ Stop Trading</button>
+      <button id="btn-kill" class="danger">⛔ Kill Switch</button>
+    </div>
+    <div class="btn-row">
+      <button id="btn-runonce">Run One Live Decision Now</button>
+      <button id="btn-tune">Tune Strategy</button>
+      <button id="btn-backtest">Backtest</button>
+      <button id="btn-save">Save Settings</button>
+      <button id="btn-connect">Connect Kalshi</button>
+    </div>
+    <div id="control-msg" class="msg"></div>
+  </section>
+
+  <!-- ACCOUNT PANEL -->
+  <section class="card">
+    <h2>Account</h2>
+    <div id="account-grid" class="kv"></div>
+  </section>
+
+  <!-- MARKET PANEL -->
+  <section class="card">
+    <h2>Market</h2>
+    <div id="market-grid" class="kv"></div>
+    <canvas id="chart" height="140"></canvas>
+    <div class="signals" id="signals"></div>
+  </section>
+
+  <!-- ECOSYSTEM PANEL -->
+  <section class="card span2">
+    <h2>Trophic Information Forager</h2>
+    <div class="eco-header">
+      <span id="eco-phase-badge" class="eco-badge producer">PRODUCER</span>
+      <span id="eco-keystone" class="eco-keystone" title="Most central node — the species currently driving the ecosystem">keystone: —</span>
+      <span id="eco-mult" class="mono small">size ×1.00</span>
+      <span id="eco-disturbance" class="eco-pill" title="L1 norm of (|vol_z|+|spread_z|+|stretch_z|+|liq_z|)/4. >1 = ecological disturbance.">disturbance —</span>
+      <span id="eco-ascendancy" class="eco-pill" title="Ulanowicz relative ascendancy A/C. ~0.3-0.5 = healthy adaptive churn. >0.55 + disturbance high = brittle (one pathway locked in). <0.20 = diffuse / no clean driver.">A/C —</span>
+      <span id="eco-tst" class="eco-pill" title="Total system throughput — sum of |edge weights|. Higher = more total information flow in the network.">TST —</span>
+      <label class="eco-toggle" title="Legacy MPC only: multiplies target size by the phase multiplier. Robust MPC conditions gain, band, cap, and live uncertainty internally.">
+        <input type="checkbox" id="chk-ecosystem"/>
+        <span>legacy phase modulation</span>
+      </label>
+    </div>
+    <div class="eco-grid">
+      <!-- LEFT: food web -->
+      <div class="eco-foodweb">
+        <div class="eco-sublabel">Information Web · directed lagged-correlation flow</div>
+        <svg id="eco-web" viewBox="0 0 420 320" class="eco-svg"></svg>
+      </div>
+      <!-- MIDDLE: phase succession ring + vitality map -->
+      <div class="eco-phasering">
+        <div class="eco-sublabel">Ecological Succession · current phase</div>
+        <svg id="eco-ring" viewBox="0 0 240 240" class="eco-svg"></svg>
+        <div class="eco-sublabel" style="margin-top:8px">Window of Vitality · rel-ascendancy × disturbance</div>
+        <svg id="eco-vitality" viewBox="0 0 240 220" class="eco-svg"></svg>
+      </div>
+      <!-- RIGHT: drivers + organisms -->
+      <div class="eco-side">
+        <div class="eco-sublabel">Multi-scale subnetworks</div>
+        <div id="eco-scales" class="eco-feeds"></div>
+        <div class="eco-sublabel">Driver z-scores</div>
+        <div id="eco-drivers" class="eco-drivers"></div>
+        <div class="eco-sublabel" style="margin-top:10px">Organism fitness · mycelial allocation</div>
+        <div id="eco-organisms" class="eco-organisms"></div>
+        <div class="eco-sublabel" style="margin-top:10px">Multi-asset feed status</div>
+        <div id="eco-feeds" class="eco-feeds"></div>
+      </div>
+    </div>
+    <div id="eco-rationale" class="eco-rationale">—</div>
+  </section>
+
+  <!-- CSD RESILIENCE PANEL -->
+  <section class="card">
+    <h2>Ecological Resilience <span class="eco-pill" title="Critical Slowing Down: when on, the strategy sits out cycles where risk &gt; threshold. Validated on Kalshi 3m walk-forward (+2.4pp return, -0.6pp max_dd, +0.15 sharpe). Off in conservative/moderate; on in aggressive/ultra.">CSD governor</span></h2>
+    <div class="csd-wrap">
+      <div class="csd-well-wrap">
+        <svg id="csd-well" viewBox="0 0 360 170" class="eco-svg csd-svg"></svg>
+        <div class="csd-well-cap">recovery basin · ball escape ≈ regime shift</div>
+      </div>
+      <div class="csd-row">
+        <span class="csd-label">risk</span>
+        <div class="csd-bar"><div id="csd-bar-fill" class="csd-bar-fill"></div>
+          <div id="csd-bar-mark" class="csd-bar-mark" title="Threshold"></div></div>
+        <span id="csd-risk-val" class="mono">0.000</span>
+      </div>
+      <div class="csd-kv">
+        <span class="csd-label">skew_now</span><span id="csd-skew-val" class="mono">—</span>
+        <span class="csd-label">threshold</span><span id="csd-threshold-val" class="mono">0.95</span>
+      </div>
+      <div class="csd-row">
+        <span id="csd-state-badge" class="eco-badge churn">DISABLED</span>
+        <label class="eco-toggle" title="Toggle the CSD governor. When on, the strategy sits out cycles where the refined CSD risk exceeds the threshold (abs_skew of log-deviation, z-scored).">
+          <input type="checkbox" id="chk-csd"/>
+          <span>enable governor</span>
+        </label>
+      </div>
+      <div id="csd-note" class="rdetail mono small">—</div>
+    </div>
+  </section>
+
+  <!-- FORAGING CYCLE PANEL -->
+  <section class="card">
+    <h2>Foraging Cycle <span class="eco-pill" title="Ecological profit-harvest + refractory cooldown. Trims/closes a profitable position when the edge is consumed (especially in churn/disturbance), then RESTS — blocks new entries, still allows exits — until the ecosystem resets or a new disturbance appears. Adjust the triggers in the box below.">harvest + cooldown</span></h2>
+    <div class="vr-wrap">
+      <div class="vr-row">
+        <span id="forager-badge" class="eco-badge churn">OFF</span>
+        <span id="forager-pnlr" class="mono small">pnl_R: —</span>
+        <span id="forager-hp" class="mono small">HP: —</span>
+        <span id="forager-cooldown" class="mono small" style="margin-left:auto">cooldown: —</span>
+      </div>
+      <div id="forager-detail" class="rdetail mono small">Forager off. Toggle on to harvest profit and rest during churn.</div>
+      <div class="vr-row" style="margin-top:8px">
+        <span id="autotomy-badge" class="eco-badge churn">AUTOTOMY OFF</span>
+        <span id="autotomy-lossr" class="mono small">loss_R: —</span>
+        <span id="autotomy-pressure" class="mono small">AP: —</span>
+        <span id="autotomy-cooldown" class="mono small" style="margin-left:auto">cooldown: —</span>
+      </div>
+      <div id="autotomy-detail" class="rdetail mono small">Autotomy off. It still watches for toxic losing positions.</div>
+      <div class="vr-row">
+        <label class="eco-toggle" title="Turn the foraging-cycle layer on/off. When on it can trim/close profitable positions and block new entries during the refractory cooldown.">
+          <input type="checkbox" id="chk-forager-enabled"/>
+          <span>enable forager</span>
+        </label>
+        <label class="eco-toggle" title="Turn the Autotomy Agent on/off. When on it can force-close a losing position only when loss combines with toxic ecology, then block new entries during loss cooldown.">
+          <input type="checkbox" id="chk-autotomy-enabled"/>
+          <span>enable autotomy</span>
+        </label>
+      </div>
+      <div class="vr-row" style="align-items:center;flex-wrap:wrap;gap:6px">
+        <span class="mono small">how hungry:</span>
+        <div id="forager-hunger" style="display:inline-flex;gap:4px;flex-wrap:wrap">
+          <button class="fhunger" data-hunger="lazy" title="Harvest late, rest long (up to 30 min).">Lazy</button>
+          <button class="fhunger" data-hunger="steady" title="Balanced harvesting.">Steady</button>
+          <button class="fhunger" data-hunger="hungry" title="Harvest sooner, rest ~5-12 min.">Hungry</button>
+          <button class="fhunger" data-hunger="ravenous" title="Eat profit fast, flatten in any churn, rest only ~5-10 min.">Ravenous</button>
+        </div>
+      </div>
+      <div class="vr-row" style="align-items:center;flex-wrap:wrap;gap:6px">
+        <span class="mono small">autotomy:</span>
+        <div id="autotomy-aggression" style="display:inline-flex;gap:4px;flex-wrap:wrap">
+          <button class="aaggr" data-aggression="lazy" title="Slow loss-shedding: waits for stronger confirmation.">Lazy</button>
+          <button class="aaggr" data-aggression="steady" title="Balanced toxic-loss exit.">Steady</button>
+          <button class="aaggr" data-aggression="hungry" title="Earlier ejects with fewer confirmations.">Hungry</button>
+          <button class="aaggr" data-aggression="ravenous" title="Fastest ejects; treats toxic small losses as bait.">Ravenous</button>
+        </div>
+      </div>
+      <div class="vr-row" style="align-items:center;gap:6px;margin-top:4px">
+        <span class="mono small" title="Refractory rest after a harvest, during which NEW entries are blocked (exits always allowed). 0 = auto (hunger preset + regime autoscale). >0 = fixed seconds, hard timer.">rest seconds (0 = auto):</span>
+        <input type="number" id="inp-forager-cooldown" min="0" step="5" style="width:74px"/>
+        <span class="mono small" title="Loss cooldown after an Autotomy hard-exit. 0 = aggression preset cooldown. >0 = fixed seconds.">loss cooldown:</span>
+        <input type="number" id="inp-autotomy-cooldown" min="0" step="5" style="width:74px"/>
+      </div>
+      <div class="mono small" style="margin-top:8px;color:#9ca3af">Foraging cycle (live)</div>
+      <svg id="forager-orbit" viewBox="0 0 480 200" class="eco-svg" style="width:100%"></svg>
+      <div class="mono small" style="margin-top:8px;color:#9ca3af">Captured profit over time</div>
+      <svg id="forager-chart" viewBox="0 0 480 120" class="eco-svg" style="width:100%"></svg>
+      <div id="forager-chart-note" class="rdetail mono small">—</div>
+    </div>
+  </section>
+
+  <!-- ALPHA DECOMPOSITION PANEL -->
+  <section class="card">
+    <h2>Signal Stack <span class="eco-pill" title="Per-component contribution to the latest bar's blended alpha. MPC = validated mean-reversion. spot_lead = Coinbase BTC lead. funding_fade = perp funding-rate fade. oi_pressure = Hyperliquid OI sign × magnitude. Weighted sum = blended aim.">alpha decomposition</span></h2>
+    <svg id="alpha-decomp" viewBox="0 0 480 280" class="eco-svg alpha-svg"></svg>
+    <div id="alpha-decomp-note" class="rdetail mono small">—</div>
+  </section>
+
+  <!-- DECISION PANEL -->
+  <section class="card">
+    <h2>Decision</h2>
+    <div id="decision-head"></div>
+    <div id="decision-body" class="kv"></div>
+    <div id="decision-reasons"></div>
+  </section>
+
+  <!-- PROFIT OPTIMIZATION PANEL -->
+  <section class="card">
+    <h2>Profit Optimization</h2>
+    <div id="profit-grid" class="kv"></div>
+    <div id="missed" class="missed"></div>
+  </section>
+
+  <!-- RISK PANEL -->
+  <section class="card">
+    <h2>Risk Checks <span id="fg-pill" class="eco-pill" title="Fast guard polls live mid every fast_guard_poll_seconds; if intra-cycle drift exceeds fast_guard_emergency_move_bps it triggers an immediate cycle so the resilience layers don't miss a fast move.">fast guard —</span></h2>
+    <svg id="fg-diag" viewBox="0 0 360 80" class="eco-svg fg-svg"></svg>
+    <div id="risk-grid" class="risk"></div>
+  </section>
+
+  <!-- LLM USAGE PANEL -->
+  <section class="card">
+    <h2>LLM Usage &amp; Cost</h2>
+    <div id="llm-grid" class="kv"></div>
+    <div id="llm-by-model" class="kv small"></div>
+    <div class="rdetail mono small" id="llm-note"></div>
+  </section>
+
+  <!-- TUNING PANEL -->
+  <section class="card">
+    <h2>Tuning</h2>
+    <div class="btn-row">
+      <button id="btn-tune2" class="go">Run Full Tuning Pipeline</button>
+      <button id="btn-tune-stop" class="warn">Stop Tuning</button>
+    </div>
+    <div id="tuning-grid" class="kv"></div>
+    <div class="progress"><div id="tune-bar"></div></div>
+    <pre id="tuning-params" class="mono small"></pre>
+  </section>
+
+  <!-- LOGS PANEL -->
+  <section class="card span2">
+    <h2>Logs</h2>
+    <div class="tabs">
+      <button class="tab active" data-tab="events">Events</button>
+      <button class="tab" data-tab="decisions">Decisions</button>
+      <button class="tab" data-tab="orders">Orders</button>
+      <button class="tab" data-tab="fills">Fills</button>
+      <button class="tab" data-tab="pnl_history">P&L</button>
+    </div>
+    <div id="log-body" class="log"></div>
+  </section>
+</main>
+
+<script src="/static/app.js?v=22"></script>
+</body>
+</html>

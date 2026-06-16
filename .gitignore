@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+trading_API_keys.txt
+state/
+state/anthropic_key.txt
+*.log
+.env
+.claude/
+.codex/
+**/__pycache__/

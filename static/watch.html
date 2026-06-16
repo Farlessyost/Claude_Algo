@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BTC Perp — Live Watch</title>
+<style>
+:root{--bg:#0b0e14;--card:#141925;--line:#26304a;--txt:#e6ecf5;--mut:#8b97ad;
+--grn:#22c55e;--red:#ef4444;--amb:#f59e0b;--acc:#3b82f6}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--txt);
+font-family:system-ui,Segoe UI,Roboto,sans-serif;padding:18px}
+h1{font-size:18px;margin:0 0 4px}.sub{color:var(--mut);font-size:12px;margin-bottom:16px}
+.row{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;flex:1;min-width:180px}
+.lbl{color:var(--mut);font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+.big{font-size:26px;font-weight:700;font-family:ui-monospace,Consolas,monospace;margin-top:6px}
+.pos{color:var(--grn)}.neg{color:var(--red)}
+.pill{display:inline-block;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600;border:1px solid var(--line)}
+.on{background:#0c2a17;color:var(--grn);border-color:#1c5235}
+.off{background:#2a210a;color:var(--amb)}
+.verb{font-size:30px;font-weight:800}
+.verb.LONG,.verb.ADD{color:var(--grn)}.verb.SHORT{color:var(--red)}
+.verb.HOLD{color:var(--mut)}.verb.REDUCE,.verb.CLOSE{color:var(--amb)}
+table{width:100%;border-collapse:collapse;font-size:12px;font-family:ui-monospace,Consolas,monospace}
+td,th{text-align:left;padding:5px 8px;border-bottom:1px solid #1b2230}th{color:var(--mut)}
+.full{flex-basis:100%}a{color:var(--acc)}
+</style></head><body>
+<h1>BTC Perp — Live Watch</h1>
+<div class="sub">KXBTCPERP · mr_edge · auto-refresh 3s · <a href="/">full console →</a> · <span id="now"></span></div>
+
+<div class="row">
+  <div class="card"><div class="lbl">Equity</div><div class="big" id="equity">—</div></div>
+  <div class="card"><div class="lbl">Session P&L</div><div class="big" id="pnl">—</div></div>
+  <div class="card"><div class="lbl">Position</div><div class="big" id="pos">—</div></div>
+  <div class="card"><div class="lbl">Open Orders</div><div class="big" id="oo">—</div></div>
+</div>
+<div class="row">
+  <div class="card"><div class="lbl">Live Autonomous</div><div style="margin-top:8px"><span class="pill" id="live">—</span> <span class="pill" id="kill">—</span></div>
+    <div class="lbl" style="margin-top:10px">Cycles / Next</div><div id="cyc" style="font-family:ui-monospace;margin-top:4px">—</div></div>
+  <div class="card" style="flex:2"><div class="lbl">Current Decision</div>
+    <div style="display:flex;align-items:center;gap:14px;margin-top:6px">
+      <span class="verb" id="verb">—</span>
+      <div style="font-size:12px;color:var(--mut)" id="why"></div></div>
+    <div style="font-size:12px;margin-top:6px" id="dec2"></div></div>
+</div>
+<div class="row">
+  <div class="card full"><div class="lbl">Recent orders / fills</div>
+    <table><thead><tr><th>time</th><th>verb</th><th>side</th><th>count</th><th>price</th><th>maker</th><th>filled</th></tr></thead>
+    <tbody id="orders"><tr><td colspan="7" style="color:var(--mut)">none yet</td></tr></tbody></table></div>
+</div>
+<div class="row">
+  <div class="card full"><div class="lbl">Market</div><div id="mkt" style="font-family:ui-monospace;font-size:12px;margin-top:6px">—</div></div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const f=(n,d=2)=>(n==null||isNaN(n))?"—":Number(n).toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:d});
+let startEq=null;
+async function tick(){
+  try{
+    const s=await (await fetch('/api/state')).json();
+    $('now').textContent=new Date(s.ts).toLocaleTimeString();
+    const a=s.account||{},m=s.market||{},d=s.last_decision||{},ls=s.loop_status||{},st=s.settings||{};
+    const eq=a.equity;
+    if(eq!=null&&startEq==null)startEq=eq;
+    $('equity').textContent="$"+f(eq);
+    const pnl=(eq!=null&&startEq!=null)?eq-startEq:null;
+    const pe=$('pnl');pe.textContent=(pnl==null?"—":(pnl>=0?"+":"")+"$"+f(pnl,4));pe.className="big "+(pnl>=0?"pos":"neg");
+    $('pos').textContent=f(a.position_contracts)+" ("+(a.position_direction||"FLAT")+")";
+    $('oo').textContent=a.open_orders_count??0;
+    const live=st.live_autonomous_armed&&st.allow_live_orders;
+    $('live').textContent=live?"LIVE ON":"OFF";$('live').className="pill "+(live?"on":"off");
+    $('kill').textContent=st.kill_switch_engaged?"KILL":"kill clear";$('kill').className="pill "+(st.kill_switch_engaged?"off":"on");
+    $('cyc').textContent=(ls.cycles||0)+" cycles · running="+(ls.running||false)+(ls.deadline_ts?(" · stops "+new Date(ls.deadline_ts).toLocaleTimeString()):"");
+    $('verb').textContent=d.verb||"—";$('verb').className="verb "+(d.verb||"");
+    $('why').textContent=d.why_better_than_hold||"";
+    $('dec2').textContent="conf "+f((d.confidence||0)*100,0)+"% · edge "+f(d.expected_edge_pct)+"% · by "+(d.source||"—");
+    const sp=(m.orderbook||{});
+    $('mkt').textContent="price $"+f(m.price,4)+" · bid "+f(sp.best_bid,4)+" / ask "+f(sp.best_ask,4)
+      +" · spread "+f(sp.spread_bps,1)+"bps · depth "+f(sp.depth_total,0)+" · ATR "+f((m.features||{}).atr_pct,3)+"% · "+(m.timeframe||"");
+    const os=(s.logs||{}).orders||[];
+    $('orders').innerHTML=os.length?os.slice(0,8).map(o=>`<tr><td>${new Date(o.ts).toLocaleTimeString()}</td><td>${o.verb||''}</td><td>${o.side||''}</td><td>${f(o.count)}</td><td>${f(o.price,4)}</td><td>${o.maker?'maker':'taker'}</td><td>${f(o.fill_count)}</td></tr>`).join(''):'<tr><td colspan="7" style="color:#8b97ad">none yet</td></tr>';
+  }catch(e){}
+}
+tick();setInterval(tick,3000);
+</script></body></html>
